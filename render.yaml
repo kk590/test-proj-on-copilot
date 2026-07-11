@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: mini-foot-frenzy
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .

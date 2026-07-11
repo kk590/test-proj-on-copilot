@@ -35,14 +35,11 @@ Then open `http://localhost:8080`.
 
 ## Deploy on Render.com
 
-Use a **Static Site** service:
+This repository now includes `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/render.yaml`, so you can deploy with a **Blueprint**.
 
 1. Push this repository to GitHub.
-2. In Render, click **New +** → **Static Site**.
+2. In Render, click **New +** → **Blueprint**.
 3. Connect repository `kk590/test-proj-on-copilot`.
-4. Use settings:
-   - **Build Command:** *(leave empty)*
-   - **Publish Directory:** `.`
-5. Click **Create Static Site**.
+4. Click **Apply**.
 
-Render will host `index.html` directly with no build step.
+Render will create a static site and host `index.html` directly with no build step.
