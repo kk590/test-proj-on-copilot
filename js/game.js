@@ -2,10 +2,22 @@ import * as THREE from "https://unpkg.com/three@0.167.1/build/three.module.js";
 import { Player } from "./player.js";
 import { Ball } from "./ball.js";
 import { AIPlayer } from "./ai.js";
+import { GoalManager } from "./goals.js";
+import { PowerUpManager } from "./powerups.js";
+import { GoalCelebration } from "./effects.js";
+
+const FIELD = { halfWidth: 18, halfLength: 28 };
+const GOAL = { halfWidth: 4.8, height: 2.6, lineZ: FIELD.halfLength, depth: 2.8 };
+const BALL_WORLD = { halfWidth: 19.7, goal: GOAL };
+const MATCH_DURATION = 180;
+const WIN_SCORE = 5;
 
 const app = document.getElementById("app");
 const meterFill = document.getElementById("kick-meter-fill");
 const timerEl = document.getElementById("timer");
+const playerScoreEl = document.getElementById("player-score");
+const aiScoreEl = document.getElementById("ai-score");
+const statusEl = document.getElementById("status");
 const touchControls = document.getElementById("touch-controls");
 
 const scene = new THREE.Scene();
@@ -29,9 +41,13 @@ sun.shadow.mapSize.set(1024, 1024);
 scene.add(hemisphere, sun);
 
 buildPitch(scene);
+
 const player = new Player(scene);
 const ball = new Ball(scene);
 const ai = new AIPlayer(scene);
+const goals = new GoalManager(scene, GOAL);
+const celebration = new GoalCelebration(scene);
+const powerUps = new PowerUpManager(scene, FIELD, (msg) => setStatus(msg, 2));
 
 const inputState = {
   forward: false,
@@ -41,9 +57,12 @@ const inputState = {
   sprint: false,
 };
 
+const score = { player: 0, ai: 0 };
 let powerCharging = false;
 let chargeTime = 0;
-let matchTime = 180;
+let matchTime = MATCH_DURATION;
+let matchOver = false;
+let statusTimer = 0;
 let lastTick = performance.now();
 
 let cameraYaw = 0;
@@ -108,17 +127,20 @@ onResize();
 requestAnimationFrame(loop);
 
 function startCharge() {
+  if (matchOver) return;
   powerCharging = true;
 }
 
 function releaseKick() {
-  if (!powerCharging) return;
+  if (!powerCharging || matchOver) return;
   const kickPower = Math.min(chargeTime / 1.2, 1);
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
   const toBall = ball.position.clone().sub(player.position);
-  if (toBall.lengthSq() < 7.5) {
-    const kickDir = forward.add(new THREE.Vector3(0, 0.22, 0)).normalize();
-    ball.kick(kickDir, THREE.MathUtils.lerp(6, 21, kickPower));
+  const kickRange = (player.radius + ball.radius + 1.5) ** 2;
+  if (toBall.lengthSq() <= kickRange) {
+    const kickDir = forward.add(new THREE.Vector3(0, 0.2, 0)).normalize();
+    const force = THREE.MathUtils.lerp(7.5, 23, kickPower) * player.getKickMultiplier();
+    ball.kick(kickDir, force, 0.24 + kickPower * 0.12);
   }
   powerCharging = false;
   chargeTime = 0;
@@ -141,6 +163,7 @@ function loop(now) {
   const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
   const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).setY(0).normalize();
 
+<<<<<<< HEAD
   player.setInput(inputState);
   player.update(delta, camForward, camRight);
   ai.update(delta, ball);
@@ -160,6 +183,27 @@ function loop(now) {
     }
   }
 
+=======
+  if (!matchOver) {
+    player.setInput(inputState);
+    player.update(delta, camForward, camRight);
+    ai.update(delta, ball, goals.playerGoalLine);
+
+    ball.resolvePlayerCollision(player.position, player.radius, player.velocity);
+    ball.resolvePlayerCollision(ai.position, ai.radius, ai.velocity);
+    ball.update(delta, BALL_WORLD);
+
+    powerUps.update(delta, [
+      { name: "player", position: player.position, radius: player.radius, applySpeedBoost: (...args) => player.applySpeedBoost(...args), applyKickBoost: (...args) => player.applyKickBoost(...args) },
+      { name: "ai", position: ai.position, radius: ai.radius, applySpeedBoost: (...args) => ai.applySpeedBoost(...args), applyKickBoost: (...args) => ai.applyKickBoost(...args) },
+    ]);
+
+    updateMatchClock(delta);
+    checkGoal();
+  }
+
+  celebration.update(delta);
+>>>>>>> 305a4a33f3383f368a49b3bb29bdb297365b8d6b
   updateThirdPersonCamera(delta);
   updateHud(delta);
 
@@ -167,19 +211,14 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-function updateHud(delta) {
-  if (matchTime > 0) {
-    matchTime = Math.max(0, matchTime - delta);
-    const mins = String(Math.floor(matchTime / 60)).padStart(2, "0");
-    const secs = String(Math.floor(matchTime % 60)).padStart(2, "0");
-    timerEl.textContent = `${mins}:${secs}`;
-  }
-  if (powerCharging) {
-    chargeTime = Math.min(chargeTime + delta, 1.2);
-    meterFill.style.width = `${(chargeTime / 1.2) * 100}%`;
+function updateMatchClock(delta) {
+  matchTime = Math.max(0, matchTime - delta);
+  if (matchTime <= 0) {
+    endMatch();
   }
 }
 
+<<<<<<< HEAD
 function resetMatch() {
   player.position.set(0, 0, 8);
   player.velocity.set(0, 0, 0);
@@ -209,6 +248,77 @@ function updateThirdPersonCamera(delta) {
   const idealPos = target.clone().add(shoulderOffset);
   camera.position.lerp(idealPos, delta * 15);
   camera.lookAt(target.x, target.y + 1, target.z);
+=======
+function checkGoal() {
+  const scorer = goals.checkGoal(ball.position, ball.radius);
+  if (!scorer) return;
+
+  score[scorer] += 1;
+  playerScoreEl.textContent = String(score.player);
+  aiScoreEl.textContent = String(score.ai);
+
+  const effectColor = scorer === "player" ? 0x4b91ff : 0xff6464;
+  celebration.burst(ball.position.clone().setY(1.1), effectColor);
+  setStatus(scorer === "player" ? "GOAL! You scored!" : "AI scored!", 2.3);
+
+  resetRound();
+
+  if (score.player >= WIN_SCORE || score.ai >= WIN_SCORE) {
+    endMatch();
+  }
+}
+
+function resetRound() {
+  powerCharging = false;
+  chargeTime = 0;
+  meterFill.style.width = "0%";
+  ball.reset(0, 0);
+  player.reset(0, 8);
+  ai.reset(0, -10);
+}
+
+function endMatch() {
+  if (matchOver) return;
+  matchOver = true;
+
+  if (score.player > score.ai) setStatus("Full Time — YOU WIN!", 999);
+  else if (score.ai > score.player) setStatus("Full Time — AI WINS!", 999);
+  else setStatus("Full Time — DRAW", 999);
+}
+
+function updateHud(delta) {
+  const mins = String(Math.floor(matchTime / 60)).padStart(2, "0");
+  const secs = String(Math.floor(matchTime % 60)).padStart(2, "0");
+  timerEl.textContent = `${mins}:${secs}`;
+
+  if (powerCharging && !matchOver) {
+    chargeTime = Math.min(chargeTime + delta, 1.2);
+    meterFill.style.width = `${(chargeTime / 1.2) * 100}%`;
+  }
+
+  if (statusTimer > 0 && statusTimer < 998) {
+    statusTimer = Math.max(0, statusTimer - delta);
+    if (statusTimer === 0) statusEl.textContent = "";
+  }
+}
+
+function setStatus(message, duration = 1.8) {
+  statusEl.textContent = message;
+  statusTimer = duration;
+}
+
+function updateThirdPersonCamera(delta) {
+  const lookTarget = player.position.clone().lerp(ball.position, 0.25);
+  lookTarget.y += 1.1;
+  const speedFactor = THREE.MathUtils.clamp(player.velocity.length() / 10, 0, 1);
+  const shoulderOffset = new THREE.Vector3(0, 4.7, 8.7 + speedFactor * 0.7).applyAxisAngle(
+    new THREE.Vector3(0, 1, 0),
+    player.mesh.rotation.y
+  );
+  const idealPos = player.position.clone().add(shoulderOffset);
+  camera.position.lerp(idealPos, delta * 5);
+  camera.lookAt(lookTarget);
+>>>>>>> 305a4a33f3383f368a49b3bb29bdb297365b8d6b
 }
 
 function onResize() {
@@ -282,6 +392,20 @@ function buildPitch(targetScene) {
   centerCircle.rotation.x = -Math.PI / 2;
   centerCircle.position.y = 0.03;
   targetScene.add(centerCircle);
+
+  for (const z of [-22.5, 22.5]) {
+    const area = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-8, 0.03, z),
+        new THREE.Vector3(8, 0.03, z),
+        new THREE.Vector3(8, 0.03, z + Math.sign(z) * 5.5),
+        new THREE.Vector3(-8, 0.03, z + Math.sign(z) * 5.5),
+        new THREE.Vector3(-8, 0.03, z),
+      ]),
+      lineMat
+    );
+    targetScene.add(area);
+  }
 
   const standMat = new THREE.MeshStandardMaterial({ color: 0x364563, roughness: 0.8 });
   const crowdColors = [0xffd16e, 0xf96f6f, 0x73efff, 0xffffff];

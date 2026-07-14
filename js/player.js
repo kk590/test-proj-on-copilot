@@ -8,6 +8,10 @@ export class Player {
     this.sprintMultiplier = 1.55;
     this.position = new THREE.Vector3(0, 0, 8);
     this.velocity = new THREE.Vector3();
+    this.speedBoostTimer = 0;
+    this.speedBoostMultiplier = 1;
+    this.kickBoostTimer = 0;
+    this.kickBoostMultiplier = 1;
     this.input = {
       forward: false,
       backward: false,
@@ -53,13 +57,36 @@ export class Player {
     this.input = inputState;
   }
 
+  applySpeedBoost(duration = 5, multiplier = 1.3) {
+    this.speedBoostTimer = Math.max(this.speedBoostTimer, duration);
+    this.speedBoostMultiplier = Math.max(this.speedBoostMultiplier, multiplier);
+  }
+
+  applyKickBoost(duration = 6, multiplier = 1.35) {
+    this.kickBoostTimer = Math.max(this.kickBoostTimer, duration);
+    this.kickBoostMultiplier = Math.max(this.kickBoostMultiplier, multiplier);
+  }
+
+  getKickMultiplier() {
+    return this.kickBoostTimer > 0 ? this.kickBoostMultiplier : 1;
+  }
+
   getFacingDirection() {
     const forward = new THREE.Vector3(0, 0, -1);
     forward.applyQuaternion(this.mesh.quaternion);
     return forward.normalize();
   }
 
+  reset(x = 0, z = 8) {
+    this.position.set(x, this.radius, z);
+    this.velocity.set(0, 0, 0);
+    this.mesh.position.copy(this.position);
+  }
+
   update(delta, cameraForward, cameraRight) {
+    this.speedBoostTimer = Math.max(0, this.speedBoostTimer - delta);
+    this.kickBoostTimer = Math.max(0, this.kickBoostTimer - delta);
+
     const inputX = (this.input.right ? 1 : 0) - (this.input.left ? 1 : 0);
     const inputZ = (this.input.backward ? 1 : 0) - (this.input.forward ? 1 : 0);
     const move = new THREE.Vector3();
@@ -67,7 +94,8 @@ export class Player {
       move.copy(cameraRight).multiplyScalar(inputX).addScaledVector(cameraForward, inputZ).setY(0).normalize();
     }
 
-    const speed = this.baseSpeed * (this.input.sprint ? this.sprintMultiplier : 1);
+    const activeBoost = this.speedBoostTimer > 0 ? this.speedBoostMultiplier : 1;
+    const speed = this.baseSpeed * activeBoost * (this.input.sprint ? this.sprintMultiplier : 1);
     this.velocity.copy(move).multiplyScalar(speed);
     this.position.addScaledVector(this.velocity, delta);
 
