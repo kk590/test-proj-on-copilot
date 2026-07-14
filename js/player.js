@@ -18,15 +18,33 @@ export class Player {
 
     const mat = new THREE.MeshStandardMaterial({ color: 0x25d8ff, roughness: 0.55 });
     this.mesh = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(this.radius, this.height - this.radius * 2), mat);
+    
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 3), mat);
+    body.position.set(0, 0.6, 0);
     body.castShadow = true;
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.38, 16, 16),
-      new THREE.MeshStandardMaterial({ color: 0xffdcb2, roughness: 0.7 })
-    );
-    head.position.set(0, 1.15, 0);
-    head.castShadow = true;
-    this.mesh.add(body, head);
+    
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.5), mat);
+    top.position.set(0, 1.2, -0.2);
+    top.castShadow = true;
+
+    const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.4, 16);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+    
+    const wheel1 = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel1.rotation.z = Math.PI / 2;
+    wheel1.position.set(0.9, 0.4, 1);
+    wheel1.castShadow = true;
+    
+    const wheel2 = wheel1.clone();
+    wheel2.position.set(-0.9, 0.4, 1);
+    
+    const wheel3 = wheel1.clone();
+    wheel3.position.set(0.9, 0.4, -1);
+    
+    const wheel4 = wheel1.clone();
+    wheel4.position.set(-0.9, 0.4, -1);
+    
+    this.mesh.add(body, top, wheel1, wheel2, wheel3, wheel4);
     this.mesh.position.copy(this.position);
     scene.add(this.mesh);
   }

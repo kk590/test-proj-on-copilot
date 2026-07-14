@@ -46,6 +46,26 @@ let chargeTime = 0;
 let matchTime = 180;
 let lastTick = performance.now();
 
+let cameraYaw = 0;
+let cameraPitch = 0.35;
+let playerScore = 0;
+let aiScore = 0;
+let isResetting = false;
+
+app.addEventListener("click", () => {
+  if (document.pointerLockElement !== app) {
+    app.requestPointerLock();
+  }
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (document.pointerLockElement === app) {
+    cameraYaw -= e.movementX * 0.0025;
+    cameraPitch += e.movementY * 0.0025;
+    cameraPitch = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, cameraPitch));
+  }
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   setInput(e.key, true);
@@ -94,7 +114,7 @@ function startCharge() {
 function releaseKick() {
   if (!powerCharging) return;
   const kickPower = Math.min(chargeTime / 1.2, 1);
-  const forward = player.getFacingDirection();
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
   const toBall = ball.position.clone().sub(player.position);
   if (toBall.lengthSq() < 7.5) {
     const kickDir = forward.add(new THREE.Vector3(0, 0.22, 0)).normalize();
@@ -125,6 +145,21 @@ function loop(now) {
   player.update(delta, camForward, camRight);
   ai.update(delta, ball);
   ball.update(delta);
+  
+  if (!isResetting) {
+    if (Math.abs(ball.position.x) < 4.5 && Math.abs(ball.position.z) > 28) {
+      isResetting = true;
+      if (ball.position.z > 28) {
+        aiScore++;
+        document.getElementById("ai-score").textContent = aiScore;
+      } else {
+        playerScore++;
+        document.getElementById("player-score").textContent = playerScore;
+      }
+      setTimeout(resetMatch, 2000);
+    }
+  }
+
   updateThirdPersonCamera(delta);
   updateHud(delta);
 
@@ -145,11 +180,34 @@ function updateHud(delta) {
   }
 }
 
+function resetMatch() {
+  player.position.set(0, player.radius, 8);
+  player.velocity.set(0, 0, 0);
+  player.mesh.rotation.y = 0;
+  
+  ai.position.set(0, 0.7, -10);
+  ai.mesh.rotation.y = 0;
+
+  ball.position.set(0, ball.radius, 0);
+  ball.velocity.set(0, 0, 0);
+  ball.mesh.rotation.set(0, 0, 0);
+
+  isResetting = false;
+}
+
 function updateThirdPersonCamera(delta) {
   const target = player.position.clone();
-  const shoulderOffset = new THREE.Vector3(0, 4.4, 8.8).applyAxisAngle(new THREE.Vector3(0, 1, 0), player.mesh.rotation.y);
+  const radius = 9;
+  const hOffset = Math.cos(cameraPitch) * radius;
+  const vOffset = Math.sin(cameraPitch) * radius;
+  const shoulderOffset = new THREE.Vector3(
+    Math.sin(cameraYaw) * hOffset,
+    vOffset,
+    Math.cos(cameraYaw) * hOffset
+  );
+  
   const idealPos = target.clone().add(shoulderOffset);
-  camera.position.lerp(idealPos, delta * 5);
+  camera.position.lerp(idealPos, delta * 15);
   camera.lookAt(target.x, target.y + 1, target.z);
 }
 
@@ -178,6 +236,44 @@ function buildPitch(targetScene) {
   ];
   const border = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat);
   targetScene.add(border);
+
+  const wallMat = new THREE.MeshStandardMaterial({ 
+    color: 0x88ccff, 
+    transparent: true, 
+    opacity: 0.2, 
+    roughness: 0.1, 
+    metalness: 0.1,
+    side: THREE.DoubleSide
+  });
+  const wallHeight = 12;
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, wallHeight, 60), wallMat);
+  leftWall.position.set(-20, wallHeight/2, 0);
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, wallHeight, 60), wallMat);
+  rightWall.position.set(20, wallHeight/2, 0);
+  const topWall = new THREE.Mesh(new THREE.BoxGeometry(40, wallHeight, 1), wallMat);
+  topWall.position.set(0, wallHeight/2, -30);
+  const bottomWall = new THREE.Mesh(new THREE.BoxGeometry(40, wallHeight, 1), wallMat);
+  bottomWall.position.set(0, wallHeight/2, 30);
+  targetScene.add(leftWall, rightWall, topWall, bottomWall);
+
+  const goalMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.3 });
+  const netMat = new THREE.MeshStandardMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
+  for (const z of [-28, 28]) {
+    const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3), goalMat);
+    leftPost.position.set(-4.5, 1.5, z);
+    const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3), goalMat);
+    rightPost.position.set(4.5, 1.5, z);
+    const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 9.24), goalMat);
+    crossbar.rotation.z = Math.PI / 2;
+    crossbar.position.set(0, 3, z);
+    const netDepth = z > 0 ? 1.5 : -1.5;
+    const netBack = new THREE.Mesh(new THREE.PlaneGeometry(9, 3), netMat);
+    netBack.position.set(0, 1.5, z + netDepth);
+    const netTop = new THREE.Mesh(new THREE.PlaneGeometry(9, Math.abs(netDepth)), netMat);
+    netTop.rotation.x = Math.PI / 2;
+    netTop.position.set(0, 3, z + netDepth/2);
+    targetScene.add(leftPost, rightPost, crossbar, netBack, netTop);
+  }
 
   const centerCircle = new THREE.LineLoop(
     new THREE.CircleGeometry(5, 28).deleteAttribute("normal").deleteAttribute("uv"),
