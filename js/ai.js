@@ -2,7 +2,7 @@ import * as THREE from "https://unpkg.com/three@0.167.1/build/three.module.js";
 
 export class AIPlayer {
   constructor(scene) {
-    this.position = new THREE.Vector3(0, 0.7, -10);
+    this.position = new THREE.Vector3(0, 0, -10);
     this.speed = 6.5;
     this.kickCooldown = 0;
 

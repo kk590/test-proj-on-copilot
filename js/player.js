@@ -6,7 +6,7 @@ export class Player {
     this.height = 1.8;
     this.baseSpeed = 8;
     this.sprintMultiplier = 1.55;
-    this.position = new THREE.Vector3(0, this.radius, 8);
+    this.position = new THREE.Vector3(0, 0, 8);
     this.velocity = new THREE.Vector3();
     this.input = {
       forward: false,

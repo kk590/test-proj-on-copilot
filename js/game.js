@@ -127,8 +127,8 @@ function releaseKick() {
 
 function setInput(key, active) {
   const normalized = key.toLowerCase();
-  if (normalized === "w" || key === "ArrowUp") inputState.forward = active;
-  else if (normalized === "s" || key === "ArrowDown") inputState.backward = active;
+  if (normalized === "s" || key === "ArrowDown") inputState.forward = active;
+  else if (normalized === "w" || key === "ArrowUp") inputState.backward = active;
   else if (normalized === "a" || key === "ArrowLeft") inputState.left = active;
   else if (normalized === "d" || key === "ArrowRight") inputState.right = active;
   else if (key === "Shift" || normalized === "shift") inputState.sprint = active;
@@ -181,11 +181,11 @@ function updateHud(delta) {
 }
 
 function resetMatch() {
-  player.position.set(0, player.radius, 8);
+  player.position.set(0, 0, 8);
   player.velocity.set(0, 0, 0);
   player.mesh.rotation.y = 0;
   
-  ai.position.set(0, 0.7, -10);
+  ai.position.set(0, 0, -10);
   ai.mesh.rotation.y = 0;
 
   ball.position.set(0, ball.radius, 0);
@@ -219,7 +219,7 @@ function onResize() {
 
 function buildPitch(targetScene) {
   const field = new THREE.Mesh(
-    new THREE.PlaneGeometry(40, 60),
+    new THREE.PlaneGeometry(40000, 60000),
     new THREE.MeshStandardMaterial({ color: 0x2ab866, roughness: 0.88 })
   );
   field.rotation.x = -Math.PI / 2;
