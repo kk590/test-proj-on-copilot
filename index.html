@@ -1,127 +1,119 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mini Foot Frenzy</title>
-    <style>
-      :root {
-        color-scheme: dark;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        overflow: hidden;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: radial-gradient(circle at top, #2d9f71, #156245 70%);
-      }
-      #app {
-        width: 100vw;
-        height: 100vh;
-      }
-      #hud {
-        position: fixed;
-        top: 1rem;
-        left: 50%;
-        transform: translateX(-50%);
-        width: min(92vw, 720px);
-        display: grid;
-        gap: 0.6rem;
-        z-index: 10;
-      }
-      .panel {
-        background: rgba(8, 10, 21, 0.65);
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        border-radius: 12px;
-        padding: 0.55rem 0.85rem;
-        backdrop-filter: blur(6px);
-      }
-      .score-row {
-        display: flex;
-        justify-content: space-between;
-        font-weight: 700;
-      }
-      .meter {
-        height: 12px;
-        background: rgba(255, 255, 255, 0.16);
-        border-radius: 999px;
-        overflow: hidden;
-      }
-      .meter-fill {
-        width: 0%;
-        height: 100%;
-        background: linear-gradient(90deg, #66dfff, #ffd44a, #ff6f6f);
-        transition: width 40ms linear;
-      }
-      #help {
-        position: fixed;
-        bottom: 1rem;
-        left: 1rem;
-        right: 1rem;
-        max-width: 560px;
-        background: rgba(8, 10, 21, 0.62);
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        border-radius: 12px;
-        padding: 0.7rem 0.9rem;
-        font-size: 0.92rem;
-        z-index: 10;
-      }
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Platformer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: radial-gradient(circle at top, #2d9f71, #156245 70%);
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #hud {
+      position: fixed;
+      top: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(92vw, 720px);
+      display: grid;
+      gap: 0.6rem;
+      z-index: 10;
+    }
+
+    .panel {
+      background: rgba(8, 10, 21, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 12px;
+      padding: 0.55rem 0.85rem;
+      backdrop-filter: blur(6px);
+    }
+
+    .score-row {
+      display: flex;
+      justify-content: center;
+      font-weight: 700;
+    }
+
+    #help {
+      position: fixed;
+      bottom: 1rem;
+      left: 1rem;
+      right: 1rem;
+      max-width: 560px;
+      background: rgba(8, 10, 21, 0.62);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 12px;
+      padding: 0.7rem 0.9rem;
+      font-size: 0.92rem;
+      z-index: 10;
+    }
+
+    #touch-controls {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      display: none;
+      gap: 0.55rem;
+      z-index: 11;
+    }
+
+    .touch-btn {
+      border: none;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      color: #fff;
+      background: rgba(13, 21, 37, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    @media (max-width: 900px),
+    (pointer: coarse) {
       #touch-controls {
-        position: fixed;
-        bottom: 1rem;
-        right: 1rem;
-        display: none;
-        gap: 0.55rem;
-        z-index: 11;
+        display: grid;
+        grid-template-columns: repeat(3, 56px);
       }
-      .touch-btn {
-        border: none;
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        color: #fff;
-        background: rgba(13, 21, 37, 0.78);
-        border: 1px solid rgba(255, 255, 255, 0.25);
-      }
-      @media (max-width: 900px), (pointer: coarse) {
-        #touch-controls {
-          display: grid;
-          grid-template-columns: repeat(3, 56px);
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div id="app"></div>
-    <div id="hud">
-      <div class="panel score-row">
-        <span>⚽ YOU <strong id="player-score">0</strong></span>
-        <span id="timer">03:00</span>
-        <span><strong id="ai-score">0</strong> AI 🤖</span>
-      </div>
-      <div class="panel">
-        <div style="font-size: 0.82rem; margin-bottom: 0.35rem">Kick Power</div>
-        <div class="meter"><div id="kick-meter-fill" class="meter-fill"></div></div>
-      </div>
-      <div id="status" class="panel" style="text-align:center; min-height:2.2rem;"></div>
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+  <div id="hud">
+    <div class="panel score-row">
+      <span id="level-text" style="font-size: 1.2rem;">Level 1 / 20</span>
     </div>
-    <div id="help">
-<<<<<<< HEAD
-      Move: WASD/Arrows • Sprint: Shift • Kick: Hold + release Mouse Left (or K) • Click to look around (ESC to unlock)
-=======
-      Move: WASD/Arrows • Sprint: Shift • Kick: Hold + release Mouse Left (or K) • First to 5 or full-time
->>>>>>> 305a4a33f3383f368a49b3bb29bdb297365b8d6b
-    </div>
-    <div id="touch-controls">
-      <button class="touch-btn" data-key="ArrowUp">↑</button>
-      <button class="touch-btn" data-key="ArrowLeft">←</button>
-      <button class="touch-btn" data-key="ArrowRight">→</button>
-      <button class="touch-btn" data-key="ArrowDown">↓</button>
-      <button class="touch-btn" data-key="Shift">S</button>
-      <button class="touch-btn" data-key="Kick">K</button>
-    </div>
-    <script type="module" src="./js/game.js"></script>
-  </body>
+    <div id="status" class="panel" style="text-align:center; min-height:2.2rem;"></div>
+  </div>
+  <div id="help">
+    Move: WASD/Arrows • Sprint: Shift • Jump: Space
+  </div>
+  <div id="touch-controls">
+    <button class="touch-btn" data-key="ArrowDown">↑</button>
+    <button class="touch-btn" data-key="ArrowLeft">←</button>
+    <button class="touch-btn" data-key="ArrowRight">→</button>
+    <button class="touch-btn" data-key="ArrowUp">↓</button>
+    <button class="touch-btn" data-key="Shift">S</button>
+    <button class="touch-btn" data-key="Space">J</button>
+  </div>
+  <script type="module" src="./js/game.js"></script>
+</body>
+
 </html>

@@ -1,22 +1,9 @@
 import * as THREE from "https://unpkg.com/three@0.167.1/build/three.module.js";
 import { Player } from "./player.js";
-import { Ball } from "./ball.js";
-import { AIPlayer } from "./ai.js";
-import { GoalManager } from "./goals.js";
-import { PowerUpManager } from "./powerups.js";
-import { GoalCelebration } from "./effects.js";
-
-const FIELD = { halfWidth: 18, halfLength: 28 };
-const GOAL = { halfWidth: 4.8, height: 2.6, lineZ: FIELD.halfLength, depth: 2.8 };
-const BALL_WORLD = { halfWidth: 19.7, goal: GOAL };
-const MATCH_DURATION = 180;
-const WIN_SCORE = 5;
+import { generateLevels } from "./levels.js";
 
 const app = document.getElementById("app");
-const meterFill = document.getElementById("kick-meter-fill");
-const timerEl = document.getElementById("timer");
-const playerScoreEl = document.getElementById("player-score");
-const aiScoreEl = document.getElementById("ai-score");
+const levelEl = document.getElementById("level-text");
 const statusEl = document.getElementById("status");
 const touchControls = document.getElementById("touch-controls");
 
@@ -40,14 +27,12 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 scene.add(hemisphere, sun);
 
-buildPitch(scene);
-
 const player = new Player(scene);
-const ball = new Ball(scene);
-const ai = new AIPlayer(scene);
-const goals = new GoalManager(scene, GOAL);
-const celebration = new GoalCelebration(scene);
-const powerUps = new PowerUpManager(scene, FIELD, (msg) => setStatus(msg, 2));
+const levels = generateLevels();
+
+let currentLevelIndex = 0;
+let currentLevel = null;
+let platformMeshes = [];
 
 const inputState = {
   forward: false,
@@ -55,65 +40,31 @@ const inputState = {
   left: false,
   right: false,
   sprint: false,
+  jump: false,
 };
 
-const score = { player: 0, ai: 0 };
-let powerCharging = false;
-let chargeTime = 0;
-let matchTime = MATCH_DURATION;
-let matchOver = false;
 let statusTimer = 0;
 let lastTick = performance.now();
-
-let cameraYaw = 0;
-let cameraPitch = 0.35;
-let playerScore = 0;
-let aiScore = 0;
-let isResetting = false;
-
-app.addEventListener("click", () => {
-  if (document.pointerLockElement !== app) {
-    app.requestPointerLock();
-  }
-});
-
-document.addEventListener("mousemove", (e) => {
-  if (document.pointerLockElement === app) {
-    cameraYaw -= e.movementX * 0.0025;
-    cameraPitch += e.movementY * 0.0025;
-    cameraPitch = Math.max(0.1, Math.min(Math.PI / 2 - 0.1, cameraPitch));
-  }
-});
+let isTransitioning = false;
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
   setInput(e.key, true);
-  if (e.key.toLowerCase() === "k") startCharge();
 });
 
 window.addEventListener("keyup", (e) => {
   setInput(e.key, false);
-  if (e.key.toLowerCase() === "k") releaseKick();
-});
-
-window.addEventListener("mousedown", (e) => {
-  if (e.button === 0) startCharge();
-});
-window.addEventListener("mouseup", (e) => {
-  if (e.button === 0) releaseKick();
 });
 
 touchControls.querySelectorAll(".touch-btn").forEach((button) => {
   const key = button.dataset.key;
   const down = (evt) => {
     evt.preventDefault();
-    if (key === "Kick") startCharge();
-    else setInput(key, true);
+    setInput(key, true);
   };
   const up = (evt) => {
     evt.preventDefault();
-    if (key === "Kick") releaseKick();
-    else setInput(key, false);
+    setInput(key, false);
   };
   button.addEventListener("touchstart", down, { passive: false });
   button.addEventListener("touchend", up, { passive: false });
@@ -124,182 +75,107 @@ touchControls.querySelectorAll(".touch-btn").forEach((button) => {
 
 window.addEventListener("resize", onResize);
 onResize();
-requestAnimationFrame(loop);
-
-function startCharge() {
-  if (matchOver) return;
-  powerCharging = true;
-}
-
-function releaseKick() {
-  if (!powerCharging || matchOver) return;
-  const kickPower = Math.min(chargeTime / 1.2, 1);
-  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
-  const toBall = ball.position.clone().sub(player.position);
-  const kickRange = (player.radius + ball.radius + 1.5) ** 2;
-  if (toBall.lengthSq() <= kickRange) {
-    const kickDir = forward.add(new THREE.Vector3(0, 0.2, 0)).normalize();
-    const force = THREE.MathUtils.lerp(7.5, 23, kickPower) * player.getKickMultiplier();
-    ball.kick(kickDir, force, 0.24 + kickPower * 0.12);
-  }
-  powerCharging = false;
-  chargeTime = 0;
-  meterFill.style.width = "0%";
-}
 
 function setInput(key, active) {
   const normalized = key.toLowerCase();
-  if (normalized === "s" || key === "ArrowDown") inputState.forward = active;
-  else if (normalized === "w" || key === "ArrowUp") inputState.backward = active;
+  if (normalized === "w" || key === "ArrowDown") inputState.backward = active;
+  else if (normalized === "s" || key === "ArrowUp") inputState.forward = active;
   else if (normalized === "a" || key === "ArrowLeft") inputState.left = active;
   else if (normalized === "d" || key === "ArrowRight") inputState.right = active;
   else if (key === "Shift" || normalized === "shift") inputState.sprint = active;
+  else if (key === " " || key === "Spacebar" || key === "Space") inputState.jump = active;
+}
+
+function clearLevel() {
+  for (const mesh of platformMeshes) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+  platformMeshes = [];
+}
+
+function loadLevel(index) {
+  clearLevel();
+  if (index >= levels.length) {
+    setStatus("You beat the game! Refresh to play again.", 9999);
+    isTransitioning = true;
+    return;
+  }
+  
+  currentLevel = levels[index];
+  levelEl.textContent = `Level ${currentLevel.id} / ${levels.length}`;
+  
+  for (const p of currentLevel.platforms) {
+    const geo = new THREE.BoxGeometry(p.size.x, p.size.y, p.size.z);
+    
+    let materialProps = { color: p.color, roughness: 0.8 };
+    if (p.isGoal) {
+      materialProps = { color: p.color, emissive: p.color, emissiveIntensity: 0.5 };
+    }
+    
+    const mat = new THREE.MeshStandardMaterial(materialProps);
+    const mesh = new THREE.Mesh(geo, mat);
+    
+    mesh.position.copy(p.position);
+    mesh.receiveShadow = true;
+    mesh.castShadow = true;
+    
+    scene.add(mesh);
+    platformMeshes.push(mesh);
+  }
+
+  player.reset(currentLevel.startPosition);
+  isTransitioning = false;
+  setStatus(`Level ${currentLevel.id}`, 2);
 }
 
 function loop(now) {
   const delta = Math.min((now - lastTick) / 1000, 0.033);
   lastTick = now;
 
-  const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).setY(0).normalize();
-  const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion).setY(0).normalize();
+  if (!isTransitioning && currentLevel) {
+    // Camera is fixed relative to world forward/right or we just use global Z for forward
+    const camForward = new THREE.Vector3(0, 0, -1);
+    const camRight = new THREE.Vector3(1, 0, 0);
 
-<<<<<<< HEAD
-  player.setInput(inputState);
-  player.update(delta, camForward, camRight);
-  ai.update(delta, ball);
-  ball.update(delta);
-  
-  if (!isResetting) {
-    if (Math.abs(ball.position.x) < 4.5 && Math.abs(ball.position.z) > 28) {
-      isResetting = true;
-      if (ball.position.z > 28) {
-        aiScore++;
-        document.getElementById("ai-score").textContent = aiScore;
-      } else {
-        playerScore++;
-        document.getElementById("player-score").textContent = playerScore;
-      }
-      setTimeout(resetMatch, 2000);
-    }
-  }
-
-=======
-  if (!matchOver) {
     player.setInput(inputState);
-    player.update(delta, camForward, camRight);
-    ai.update(delta, ball, goals.playerGoalLine);
+    const hitGoal = player.update(delta, camForward, camRight, currentLevel.platforms);
 
-    ball.resolvePlayerCollision(player.position, player.radius, player.velocity);
-    ball.resolvePlayerCollision(ai.position, ai.radius, ai.velocity);
-    ball.update(delta, BALL_WORLD);
+    if (hitGoal) {
+      isTransitioning = true;
+      setStatus("Level Complete!", 2);
+      setTimeout(() => {
+        currentLevelIndex++;
+        loadLevel(currentLevelIndex);
+      }, 1500);
+    } else if (player.position.y < currentLevel.fallLimit) {
+      setStatus("You fell! Restarting level...", 1.5);
+      player.reset(currentLevel.startPosition);
+    }
 
-    powerUps.update(delta, [
-      { name: "player", position: player.position, radius: player.radius, applySpeedBoost: (...args) => player.applySpeedBoost(...args), applyKickBoost: (...args) => player.applyKickBoost(...args) },
-      { name: "ai", position: ai.position, radius: ai.radius, applySpeedBoost: (...args) => ai.applySpeedBoost(...args), applyKickBoost: (...args) => ai.applyKickBoost(...args) },
-    ]);
-
-    updateMatchClock(delta);
-    checkGoal();
+    updateThirdPersonCamera(delta);
   }
 
-  celebration.update(delta);
->>>>>>> 305a4a33f3383f368a49b3bb29bdb297365b8d6b
-  updateThirdPersonCamera(delta);
-  updateHud(delta);
-
-  renderer.render(scene, camera);
-  requestAnimationFrame(loop);
-}
-
-function updateMatchClock(delta) {
-  matchTime = Math.max(0, matchTime - delta);
-  if (matchTime <= 0) {
-    endMatch();
-  }
-}
-
-<<<<<<< HEAD
-function resetMatch() {
-  player.position.set(0, 0, 8);
-  player.velocity.set(0, 0, 0);
-  player.mesh.rotation.y = 0;
-  
-  ai.position.set(0, 0, -10);
-  ai.mesh.rotation.y = 0;
-
-  ball.position.set(0, ball.radius, 0);
-  ball.velocity.set(0, 0, 0);
-  ball.mesh.rotation.set(0, 0, 0);
-
-  isResetting = false;
-}
-
-function updateThirdPersonCamera(delta) {
-  const target = player.position.clone();
-  const radius = 9;
-  const hOffset = Math.cos(cameraPitch) * radius;
-  const vOffset = Math.sin(cameraPitch) * radius;
-  const shoulderOffset = new THREE.Vector3(
-    Math.sin(cameraYaw) * hOffset,
-    vOffset,
-    Math.cos(cameraYaw) * hOffset
-  );
-  
-  const idealPos = target.clone().add(shoulderOffset);
-  camera.position.lerp(idealPos, delta * 15);
-  camera.lookAt(target.x, target.y + 1, target.z);
-=======
-function checkGoal() {
-  const scorer = goals.checkGoal(ball.position, ball.radius);
-  if (!scorer) return;
-
-  score[scorer] += 1;
-  playerScoreEl.textContent = String(score.player);
-  aiScoreEl.textContent = String(score.ai);
-
-  const effectColor = scorer === "player" ? 0x4b91ff : 0xff6464;
-  celebration.burst(ball.position.clone().setY(1.1), effectColor);
-  setStatus(scorer === "player" ? "GOAL! You scored!" : "AI scored!", 2.3);
-
-  resetRound();
-
-  if (score.player >= WIN_SCORE || score.ai >= WIN_SCORE) {
-    endMatch();
-  }
-}
-
-function resetRound() {
-  powerCharging = false;
-  chargeTime = 0;
-  meterFill.style.width = "0%";
-  ball.reset(0, 0);
-  player.reset(0, 8);
-  ai.reset(0, -10);
-}
-
-function endMatch() {
-  if (matchOver) return;
-  matchOver = true;
-
-  if (score.player > score.ai) setStatus("Full Time — YOU WIN!", 999);
-  else if (score.ai > score.player) setStatus("Full Time — AI WINS!", 999);
-  else setStatus("Full Time — DRAW", 999);
-}
-
-function updateHud(delta) {
-  const mins = String(Math.floor(matchTime / 60)).padStart(2, "0");
-  const secs = String(Math.floor(matchTime % 60)).padStart(2, "0");
-  timerEl.textContent = `${mins}:${secs}`;
-
-  if (powerCharging && !matchOver) {
-    chargeTime = Math.min(chargeTime + delta, 1.2);
-    meterFill.style.width = `${(chargeTime / 1.2) * 100}%`;
-  }
-
-  if (statusTimer > 0 && statusTimer < 998) {
+  if (statusTimer > 0 && statusTimer < 9998) {
     statusTimer = Math.max(0, statusTimer - delta);
     if (statusTimer === 0) statusEl.textContent = "";
   }
+
+  // Animate goal platform slightly
+  if (currentLevel) {
+    const goalPlatform = currentLevel.platforms.find(p => p.isGoal);
+    if (goalPlatform) {
+      const goalIndex = currentLevel.platforms.indexOf(goalPlatform);
+      const goalMesh = platformMeshes[goalIndex];
+      if (goalMesh) {
+        goalMesh.position.y = goalPlatform.position.y + Math.sin(now / 300) * 0.2;
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
 }
 
 function setStatus(message, duration = 1.8) {
@@ -308,17 +184,10 @@ function setStatus(message, duration = 1.8) {
 }
 
 function updateThirdPersonCamera(delta) {
-  const lookTarget = player.position.clone().lerp(ball.position, 0.25);
-  lookTarget.y += 1.1;
-  const speedFactor = THREE.MathUtils.clamp(player.velocity.length() / 10, 0, 1);
-  const shoulderOffset = new THREE.Vector3(0, 4.7, 8.7 + speedFactor * 0.7).applyAxisAngle(
-    new THREE.Vector3(0, 1, 0),
-    player.mesh.rotation.y
-  );
-  const idealPos = player.position.clone().add(shoulderOffset);
-  camera.position.lerp(idealPos, delta * 5);
+  const idealPos = player.position.clone().add(new THREE.Vector3(0, 5, 9));
+  camera.position.lerp(idealPos, delta * 8);
+  const lookTarget = player.position.clone().add(new THREE.Vector3(0, 1.5, 0));
   camera.lookAt(lookTarget);
->>>>>>> 305a4a33f3383f368a49b3bb29bdb297365b8d6b
 }
 
 function onResize() {
@@ -327,101 +196,6 @@ function onResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function buildPitch(targetScene) {
-  const field = new THREE.Mesh(
-    new THREE.PlaneGeometry(40000, 60000),
-    new THREE.MeshStandardMaterial({ color: 0x2ab866, roughness: 0.88 })
-  );
-  field.rotation.x = -Math.PI / 2;
-  field.receiveShadow = true;
-  targetScene.add(field);
-
-  const lineMat = new THREE.LineBasicMaterial({ color: 0xf5fbff });
-  const linePoints = [
-    new THREE.Vector3(-18, 0.03, -28),
-    new THREE.Vector3(18, 0.03, -28),
-    new THREE.Vector3(18, 0.03, 28),
-    new THREE.Vector3(-18, 0.03, 28),
-    new THREE.Vector3(-18, 0.03, -28),
-  ];
-  const border = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat);
-  targetScene.add(border);
-
-  const wallMat = new THREE.MeshStandardMaterial({ 
-    color: 0x88ccff, 
-    transparent: true, 
-    opacity: 0.2, 
-    roughness: 0.1, 
-    metalness: 0.1,
-    side: THREE.DoubleSide
-  });
-  const wallHeight = 12;
-  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(1, wallHeight, 60), wallMat);
-  leftWall.position.set(-20, wallHeight/2, 0);
-  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(1, wallHeight, 60), wallMat);
-  rightWall.position.set(20, wallHeight/2, 0);
-  const topWall = new THREE.Mesh(new THREE.BoxGeometry(40, wallHeight, 1), wallMat);
-  topWall.position.set(0, wallHeight/2, -30);
-  const bottomWall = new THREE.Mesh(new THREE.BoxGeometry(40, wallHeight, 1), wallMat);
-  bottomWall.position.set(0, wallHeight/2, 30);
-  targetScene.add(leftWall, rightWall, topWall, bottomWall);
-
-  const goalMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.3 });
-  const netMat = new THREE.MeshStandardMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
-  for (const z of [-28, 28]) {
-    const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3), goalMat);
-    leftPost.position.set(-4.5, 1.5, z);
-    const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3), goalMat);
-    rightPost.position.set(4.5, 1.5, z);
-    const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 9.24), goalMat);
-    crossbar.rotation.z = Math.PI / 2;
-    crossbar.position.set(0, 3, z);
-    const netDepth = z > 0 ? 1.5 : -1.5;
-    const netBack = new THREE.Mesh(new THREE.PlaneGeometry(9, 3), netMat);
-    netBack.position.set(0, 1.5, z + netDepth);
-    const netTop = new THREE.Mesh(new THREE.PlaneGeometry(9, Math.abs(netDepth)), netMat);
-    netTop.rotation.x = Math.PI / 2;
-    netTop.position.set(0, 3, z + netDepth/2);
-    targetScene.add(leftPost, rightPost, crossbar, netBack, netTop);
-  }
-
-  const centerCircle = new THREE.LineLoop(
-    new THREE.CircleGeometry(5, 28).deleteAttribute("normal").deleteAttribute("uv"),
-    lineMat
-  );
-  centerCircle.rotation.x = -Math.PI / 2;
-  centerCircle.position.y = 0.03;
-  targetScene.add(centerCircle);
-
-  for (const z of [-22.5, 22.5]) {
-    const area = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-8, 0.03, z),
-        new THREE.Vector3(8, 0.03, z),
-        new THREE.Vector3(8, 0.03, z + Math.sign(z) * 5.5),
-        new THREE.Vector3(-8, 0.03, z + Math.sign(z) * 5.5),
-        new THREE.Vector3(-8, 0.03, z),
-      ]),
-      lineMat
-    );
-    targetScene.add(area);
-  }
-
-  const standMat = new THREE.MeshStandardMaterial({ color: 0x364563, roughness: 0.8 });
-  const crowdColors = [0xffd16e, 0xf96f6f, 0x73efff, 0xffffff];
-  for (const z of [-34, 34]) {
-    const stand = new THREE.Mesh(new THREE.BoxGeometry(44, 2.4, 8), standMat);
-    stand.position.set(0, 1.2, z);
-    stand.receiveShadow = true;
-    stand.castShadow = true;
-    targetScene.add(stand);
-    for (let i = 0; i < 150; i++) {
-      const fan = new THREE.Mesh(
-        new THREE.SphereGeometry(0.19, 8, 8),
-        new THREE.MeshStandardMaterial({ color: crowdColors[Math.floor(Math.random() * crowdColors.length)] })
-      );
-      fan.position.set((Math.random() - 0.5) * 40, 2.5 + Math.random() * 2.4, z + (Math.random() - 0.5) * 6);
-      targetScene.add(fan);
-    }
-  }
-}
+// Start game
+loadLevel(0);
+requestAnimationFrame(loop);
