@@ -9,8 +9,12 @@ Browser-based Three.js starter for a colorful 3D mini football game.
 - Third-person follow camera
 - Player controller (WASD/Arrow movement + Shift sprint)
 - Kick charge meter and kick input (mouse hold/release or `K`)
-- Basic ball velocity + gravity + bounce physics
-- Basic 1v1 AI opponent movement
+- Ball physics with rolling friction, bounce response, and player/AI collisions
+- Blue/red goals with full-line goal detection and score tracking
+- Match flow with timer, first-to-5 win condition, and status messages
+- Basic 1v1 AI opponent that chases and shoots toward your goal
+- Random collectible power-ups (speed boost, kick boost)
+- Goal celebration particle effects and polished follow camera
 - Responsive HUD + touch button controls
 
 Main files:
@@ -20,6 +24,9 @@ Main files:
 - `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/player.js`
 - `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/ball.js`
 - `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/ai.js`
+- `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/goals.js`
+- `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/powerups.js`
+- `/home/runner/work/test-proj-on-copilot/test-proj-on-copilot/js/effects.js`
 
 ## Run locally
 
